@@ -77,7 +77,6 @@ public class ExcelWriterGUI extends JFrame {
 
         // Set the custom renderer and editor for the header cells
         dataTable.getTableHeader().setDefaultRenderer(new HeaderRenderer());
-        dataTable.getTableHeader().setD(new HeaderEditor(new JTextField()));
 
         JScrollPane tableScrollPane = new JScrollPane(dataTable);
         tableScrollPane.setPreferredSize(new Dimension(600, 200));
@@ -172,13 +171,26 @@ public class ExcelWriterGUI extends JFrame {
             for (int i = 1; i < data.size(); i++) { // Start from 1 to skip the header row
                 tableData[i - 1] = data.get(i).toArray();
             }
-            // Get the column headers from the first row
-            Object[] columnHeaders = data.get(0).toArray();
 
-            // Update the table model with the new data and column headers
-            tableModel.setData(tableData, columnHeaders);
+            // Get the column headers from the first row
+            List<Object> originalHeaders = data.get(0);
+            List<Object> modifiedHeaders = new ArrayList<>();
+
+            // Capitalize the first letter of each column header and add to modifiedHeaders
+            for (Object header : originalHeaders) {
+                String headerStr = String.valueOf(header);
+                if (!headerStr.isEmpty()) {
+                    modifiedHeaders.add(headerStr.substring(0, 1).toUpperCase() + headerStr.substring(1));
+                } else {
+                    modifiedHeaders.add(headerStr);
+                }
+            }
+
+            // Update the table model with the new data and modified column headers
+            tableModel.setData(tableData, modifiedHeaders.toArray());
         }
     }
+
 
     private void executeQuery() {
         try {
@@ -199,18 +211,20 @@ public class ExcelWriterGUI extends JFrame {
 
     private void saveToExcel() {
         try {
-            List<List<Object>> data = new ArrayList<>();
-            for (int i = 0; i < tableModel.getRowCount(); i++) {
-                List<Object> row = new ArrayList<>();
-                for (int j = 0; j < tableModel.getColumnCount(); j++) {
-                    row.add(tableModel.getValueAt(i, j));
-                }
-                data.add(row);
-            }
-
-            if (data.isEmpty()) {
+            if (tableModel.getRowCount() == 0) {
                 JOptionPane.showMessageDialog(this, "No data to save.", "Error", JOptionPane.ERROR_MESSAGE);
                 return;
+            }
+
+            // Prompt user to enter new column headers
+            List<Object> newHeaders = new ArrayList<>();
+            for (int colIndex = 0; colIndex < tableModel.getColumnCount(); colIndex++) {
+                String header = JOptionPane.showInputDialog(this, "Enter new header for column '" + tableModel.getColumnName(colIndex) + "':");
+                if (header == null) {
+                    // User canceled input
+                    return;
+                }
+                newHeaders.add(header);
             }
 
             JFileChooser fileChooser = new JFileChooser();
@@ -228,25 +242,28 @@ public class ExcelWriterGUI extends JFrame {
                 Workbook workbook = new XSSFWorkbook();
                 Sheet sheet = workbook.createSheet("Data");
 
-                // Step 3: Write Column Headers to Excel
+                // Step 1: Write Column Headers to Excel
                 Row headerRow = sheet.createRow(0);
-                List<Object> columnHeaders = data.get(0);
-                for (int colIndex = 0; colIndex < columnHeaders.size(); colIndex++) {
-                    Cell cell = headerRow.createCell(colIndex);
-                    cell.setCellValue(String.valueOf(columnHeaders.get(colIndex)));
+                for (int colIndex = 0; colIndex < tableModel.getColumnCount(); colIndex++) {
+                    String header = String.valueOf(newHeaders.get(colIndex));
+                    headerRow.createCell(colIndex).setCellValue(header);
                 }
 
-                // Step 4: Write Data Rows to Excel
-                for (int rowIndex = 1; rowIndex < data.size(); rowIndex++) {
-                    Row excelRow = sheet.createRow(rowIndex);
-                    List<Object> rowData = data.get(rowIndex);
-                    for (int colIndex = 0; colIndex < rowData.size(); colIndex++) {
+                // Step 2: Write Data Rows to Excel
+                for (int rowIndex = 0; rowIndex < tableModel.getRowCount(); rowIndex++) {
+                    Row excelRow = sheet.createRow(rowIndex + 1); // Start from row 1 to skip header row
+                    for (int colIndex = 0; colIndex < tableModel.getColumnCount(); colIndex++) {
                         Cell cell = excelRow.createCell(colIndex);
-                        Object value = rowData.get(colIndex);
+                        Object value = tableModel.getValueAt(rowIndex, colIndex);
                         if (value instanceof String) {
                             cell.setCellValue((String) value);
                         } else if (value instanceof Date) {
                             cell.setCellValue((Date) value);
+                            // Apply date format to the cell
+                            CellStyle dateCellStyle = workbook.createCellStyle();
+                            CreationHelper creationHelper = workbook.getCreationHelper();
+                            dateCellStyle.setDataFormat(creationHelper.createDataFormat().getFormat("yyyy-MM-dd"));
+                            cell.setCellStyle(dateCellStyle);
                         } else {
                             cell.setCellValue(value.toString());
                         }
@@ -264,6 +281,8 @@ public class ExcelWriterGUI extends JFrame {
             JOptionPane.showMessageDialog(this, "Error Occurred: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
+
+
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
@@ -330,20 +349,5 @@ class HeaderRenderer extends DefaultTableCellRenderer {
         component.setBackground(Color.LIGHT_GRAY);
         component.setForeground(Color.BLACK);
         return component;
-    }
-}
-
-class HeaderEditor extends DefaultCellEditor {
-
-    public HeaderEditor(JTextField textField) {
-        super(textField);
-    }
-
-    @Override
-    public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
-        JTextField editorComponent = (JTextField) super.getTableCellEditorComponent(table, value, isSelected, row, column);
-        editorComponent.setBackground(Color.LIGHT_GRAY);
-        editorComponent.setForeground(Color.BLACK);
-        return editorComponent;
     }
 }
